@@ -62,7 +62,9 @@ services:
 
   # Layer 1: Hive Metastore
   hive-metastore:
-    image: apache/hive:4.0.1
+    build:
+      context: ./hive-metastore
+      dockerfile: Dockerfile
     container_name: lakehouse-hive-metastore
     depends_on:
       postgres:
