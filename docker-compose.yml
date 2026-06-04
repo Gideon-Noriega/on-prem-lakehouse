@@ -22,7 +22,6 @@ services:
       timeout: 5s
       retries: 3
 
-  # MinIO bucket initialization
   minio-init:
     image: minio/mc:latest
     container_name: lakehouse-minio-init
@@ -35,19 +34,19 @@ services:
       mc mb lakehouse/warehouse --ignore-existing &&
       mc mb lakehouse/raw --ignore-existing &&
       mc mb lakehouse/staging --ignore-existing &&
-      echo 'Buckets created successfully'
+      echo Buckets created successfully
       "
     networks:
       - lakehouse
 
-  # Layer 1: PostgreSQL (Hive Metastore backend)
+  # Layer 1: Iceberg REST Catalog (backed by PostgreSQL)
   postgres:
     image: postgres:16
     container_name: lakehouse-postgres
     environment:
-      POSTGRES_USER: hive
-      POSTGRES_PASSWORD: hive123
-      POSTGRES_DB: metastore
+      POSTGRES_USER: iceberg
+      POSTGRES_PASSWORD: iceberg123
+      POSTGRES_DB: iceberg_catalog
     ports:
       - "5433:5432"
     volumes:
@@ -55,36 +54,78 @@ services:
     networks:
       - lakehouse
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      test: ["CMD-SHELL", "pg_isready -U iceberg -d iceberg_catalog"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Layer 1: Hive Metastore
-  hive-metastore:
-    build:
-      context: ./hive-metastore
-      dockerfile: Dockerfile
-    container_name: lakehouse-hive-metastore
+  iceberg-rest:
+    image: tabulario/iceberg-rest:latest
+    container_name: lakehouse-iceberg-rest
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
     environment:
-      SERVICE_NAME: metastore
-      DB_DRIVER: postgres
-      SERVICE_OPTS: >-
-        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
-        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore
-        -Djavax.jdo.option.ConnectionUserName=hive
-        -Djavax.jdo.option.ConnectionPassword=hive123
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: admin123456
+      AWS_REGION: us-east-1
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/iceberg_catalog
+      CATALOG_JDBC_USER: iceberg
+      CATALOG_JDBC_PASSWORD: iceberg123
     ports:
-      - "9083:9083"
-    volumes:
-      - ./hive-metastore/conf:/opt/hive/conf:ro
+      - "8181:8181"
     networks:
       - lakehouse
+
+  # Layer 2: Spark Master
+  spark-master:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: lakehouse-spark-master
+    environment:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: admin123456
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "8082:8080"
+      - "7078:7077"
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./data:/data
+    networks:
+      - lakehouse
+    depends_on:
+      - iceberg-rest
+
+  # Layer 2: Spark Worker
+  spark-worker:
+    build:
+      context: ./spark
+      dockerfile: Dockerfile
+    container_name: lakehouse-spark-worker
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_MEMORY: 4g
+      SPARK_WORKER_CORES: 2
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: admin123456
+    volumes:
+      - ./spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./data:/data
+    networks:
+      - lakehouse
+    depends_on:
+      - spark-master
 
 volumes:
   minio_data:
