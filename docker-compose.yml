@@ -127,6 +127,20 @@ services:
     depends_on:
       - spark-master
 
+
+  # Layer 3: Trino Query Engine
+  trino:
+    image: trinodb/trino:latest
+    container_name: lakehouse-trino
+    ports:
+      - "8083:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+    networks:
+      - lakehouse
+    depends_on:
+      - iceberg-rest
+
 volumes:
   minio_data:
   postgres_data:
