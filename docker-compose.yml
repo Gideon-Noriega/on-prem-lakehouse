@@ -156,6 +156,29 @@ services:
     profiles:
       - tools
 
+  # Layer 5: Airflow Orchestration
+  airflow:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: lakehouse-airflow
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://iceberg:iceberg123@postgres:5432/iceberg_catalog
+      AIRFLOW__CORE__FERNET_KEY: ZmJiMGYwMTFhZjE2NDcyNGIwYjk4YmRiZjk1NTg5MWQ=
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: lakehouse-secret-key
+    ports:
+      - "8084:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - lakehouse
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   minio_data:
   postgres_data:
