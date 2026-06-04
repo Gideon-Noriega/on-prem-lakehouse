@@ -1,0 +1,12 @@
+lakehouse:
+  outputs:
+    dev:
+      type: trino
+      method: none
+      host: trino
+      port: 8080
+      user: trino
+      database: iceberg
+      schema: analytics
+      threads: 4
+  target: dev

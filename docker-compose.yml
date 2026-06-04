@@ -141,6 +141,21 @@ services:
     depends_on:
       - iceberg-rest
 
+  # Layer 4: dbt Analytics
+  dbt:
+    build:
+      context: ./dbt
+      dockerfile: Dockerfile
+    container_name: lakehouse-dbt
+    volumes:
+      - ./dbt:/dbt
+    networks:
+      - lakehouse
+    depends_on:
+      - trino
+    profiles:
+      - tools
+
 volumes:
   minio_data:
   postgres_data:

@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_trades
+    description: Staging view of raw trade data from the demo table
+    columns:
+      - name: id
+        tests:
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
