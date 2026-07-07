@@ -130,12 +130,14 @@ services:
 
   # Layer 3: Trino Query Engine
   trino:
-    image: trinodb/trino:latest
+    image: trinodb/trino:435
     container_name: lakehouse-trino
     ports:
       - "8083:8080"
     volumes:
       - ./trino/catalog:/etc/trino/catalog:ro
+      - /home/datastream/testmachine/trino/etc/config.properties:/etc/trino/config.properties:ro
+      - /home/datastream/testmachine/trino/etc/jvm.config:/etc/trino/jvm.config:ro
     networks:
       - lakehouse
     depends_on:
